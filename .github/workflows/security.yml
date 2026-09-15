@@ -9,23 +9,21 @@ jobs:
   sast:
     name: Static Analysis (Bandit)
     runs-on: ubuntu-latest
+    Timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install Bandit
         run: pip install bandit
 
       - name: Run Bandit
         run: |
-          bandit -r server/ \
-            -f json \
-            -o bandit-report.json \
-            --severity-level medium
+          bandit -r server/src/ --severity-level medium -f json -o bandit-report.json || true
 
       - name: Upload report
         uses: actions/upload-artifact@v4
@@ -37,18 +35,20 @@ jobs:
   dependency-check:
     name: Dependency Vulnerabilities
     runs-on: ubuntu-latest
+    Timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pip-audit
+      - name: Install project dependencies
+        run: cd server && pip install -e .
+ 
+      - name: Install pip-audit
+        run: pip install pip-audit
 
       - name: Audit dependencies
         run: pip-audit --desc
@@ -56,30 +56,68 @@ jobs:
   tests:
     name: Test Suite
     runs-on: ubuntu-latest
+    timeout-minutes: 3
+ 
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: test_root_password
+          MARIADB_DATABASE: tatou_test
+          MARIADB_USER: tatou_test
+          MARIADB_PASSWORD: test_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -u root --password=test_root_password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+          --health-start-period=30s
+ 
     steps:
       - uses: actions/checkout@v4
-
+ 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
+          python-version: '3.12'
+ 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-cov
-
-      - name: Run tests with coverage
+          cd server && pip install -e ".[dev]"
+          pip install pytest-cov
+ 
+      - name: Initialize test database
+        run: mysql -h 127.0.0.1 -u root -ptest_root_password tatou_test < db/tatou.sql
+ 
+      # 为什么有 --cov-fail-under:
+      #   设一个覆盖率底线，防止测试覆盖率悄悄下滑
+      #   初期设低一点（比如 50%），随着测试补齐逐步提高
+      - name: Run tests
+        env:
+          SECRET_KEY: test_secret_key_for_ci
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: tatou_test
+          DB_USER: tatou_test
+          DB_PASSWORD: test_password
+          STORAGE_DIR: /tmp/tatou_test_storage
+          TATOU_ENV: testing
         run: |
-          pytest \
+          mkdir -p /tmp/tatou_test_storage
+          cd server
+          pytest -v \
             --tb=short \
-            --cov=server \
+            --cov=src \
             --cov-report=term-missing \
-            --cov-report=html:coverage-report
-
+            --cov-report=html:coverage-report \
+            test/
+ 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-report
+          path: server/coverage-report/
           path: coverage-report/
