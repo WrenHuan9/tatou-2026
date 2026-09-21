@@ -10,6 +10,9 @@ jobs:
     name: Static Analysis (Bandit)
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -23,14 +26,35 @@ jobs:
 
       - name: Run Bandit
         run: |
-          bandit -r server/src/ --severity-level medium -f json -o bandit-report.json || true
+          bandit -r server/src/ --severity-level medium -f sarif -o bandit.sarif || true
 
-      - name: Upload report
-        uses: actions/upload-artifact@v4
+      - name: Upload SARIF result to the GitHub Security Dashboard
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          name: bandit-report
-          path: bandit-report.json
+          sarif_file: bandit.sarif
+          category: bandit
+
+  semgrep:
+    name: Semgrep Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    container:
+      image: semgrep/semgrep
+    if: github.actor != 'dependabot[bot]'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        run: semgrep scan --config auto --error server/src/ > semgrep-results.sarif
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
 
   dependency-check:
     name: Dependency Vulnerabilities
@@ -90,10 +114,6 @@ jobs:
  
       - name: Initialize test database
         run: mysql -h 127.0.0.1 -u root -ptest_root_password tatou_test < db/tatou.sql
- 
-      # 为什么有 --cov-fail-under:
-      #   设一个覆盖率底线，防止测试覆盖率悄悄下滑
-      #   初期设低一点（比如 50%），随着测试补齐逐步提高
       - name: Run tests
         env:
           SECRET_KEY: test_secret_key_for_ci
