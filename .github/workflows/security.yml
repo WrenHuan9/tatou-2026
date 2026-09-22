@@ -66,7 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Scan dependencies
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: fs
           scan-ref: server/
@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
  
       - name: Scan Dockerfile and docker-compose
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: config
           scan-ref: .
@@ -101,7 +101,7 @@ jobs:
         run: docker build -t tatou:test server/
  
       - name: Scan image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: tatou:test
           format: sarif
