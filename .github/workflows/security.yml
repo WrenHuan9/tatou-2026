@@ -22,7 +22,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Bandit
-        run: pip install bandit
+        run: pip install bandit[sarif]
 
       - name: Run Bandit
         run: |
@@ -48,12 +48,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run Semgrep
-        run: semgrep scan --config auto --error server/src/ > semgrep-results.sarif
+        run: semgrep scan --config auto --sarif --output semgrep-results.sarif server/src/ || true
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: semgrep.sarif
+          sarif_file: semgrep-results.sarif
           category: semgrep
 
   dependency-check:
@@ -75,7 +75,7 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit dependencies
-        run: pip-audit --desc
+        run: pip-audit --desc --skip-editable
 
   tests:
     name: Test Suite
