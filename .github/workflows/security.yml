@@ -230,6 +230,10 @@ jobs:
         with:
           target: http://localhost:5000
           allow_issue_writing: false
+          artifact_name: zap-baseline-report
+      - name: Find SARIF file
+        if: always()
+        run: find . -name "*.sarif" -o -name "*report*" -o -name "*zap*" | head -20
       - name: Upload ZAP report
         uses: github/codeql-action/upload-sarif@v3
         if: always()
