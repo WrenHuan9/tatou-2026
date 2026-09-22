@@ -66,7 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Scan dependencies
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: server/
@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
  
       - name: Scan Dockerfile and docker-compose
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
@@ -101,7 +101,7 @@ jobs:
         run: docker build -t tatou:test server/
  
       - name: Scan image
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: tatou:test
           format: sarif
@@ -230,13 +230,9 @@ jobs:
         with:
           target: http://localhost:5000
           allow_issue_writing: false
-          artifact_name: zap-baseline-report
-      - name: Find SARIF file
-        if: always()
-        run: find . -name "*.sarif" -o -name "*report*" -o -name "*zap*" | head -20
       - name: Upload ZAP report
-        uses: github/codeql-action/upload-sarif@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          sarif_file: results.sarif
-          category: zap
+          path: zap_scan.zip
+          name: zap-baseline-report
