@@ -10,7 +10,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import and_, column, create_engine, select, table, text
 from sqlalchemy.exc import IntegrityError
 
 import pickle as _std_pickle
@@ -453,15 +453,24 @@ def create_app():
                 or (request.is_json and (request.get_json(silent=True) or {}).get("id"))
             )
         try:
-            doc_id = document_id
+            doc_id = int(document_id)
         except (TypeError, ValueError):
             return jsonify({"error": "document id required"}), 400
 
         # Fetch the document (enforce ownership)
         try:
             with get_engine().connect() as conn:
-                query = "SELECT * FROM Documents WHERE id = " + doc_id
-                row = conn.execute(text(query)).first()
+                documents = table(
+                    "Documents",
+                    column("id"),
+                    column("userid"),
+                    column("name"),
+                    column("path"),
+                    column("link"),
+                )
+                row = conn.execute(
+                    select(documents).where(and_(documents.c.id == doc_id))
+                ).first()
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
@@ -819,4 +828,3 @@ app = create_app()
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
