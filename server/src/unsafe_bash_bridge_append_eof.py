@@ -8,7 +8,6 @@ any watermarking implementation this way. Don't, unless you know how to sanitize
 from __future__ import annotations
 
 from typing import Final
-import subprocess
 
 from watermarking_method import (
     InvalidKeyError,
@@ -47,11 +46,7 @@ class UnsafeBashBridgeAppendEOF(WatermarkingMethod):
         ignored by this method.
         """
         data = load_pdf_bytes(pdf)
-        cmd = "cat " + str(pdf.resolve()) + " &&  printf \"" + secret + "\""
-        
-        res = subprocess.run(cmd, shell=True, check=True, capture_output=True)
-        
-        return res.stdout
+        return data + secret.encode("utf-8")
         
     def is_watermark_applicable(
         self,
@@ -65,14 +60,15 @@ class UnsafeBashBridgeAppendEOF(WatermarkingMethod):
         """Extract the secret if present.
            Prints whatever there is after %EOF
         """
-        cmd = "sed -n '1,/^\(%%EOF\|.*%%EOF\)$/!p' " + str(pdf.resolve())
-        
-        res = subprocess.run(cmd, shell=True, check=True, encoding="utf-8", capture_output=True)
-       
+        content = load_pdf_bytes(pdf).decode("utf-8")
+        lines = content.splitlines(keepends=True)
 
-        return res.stdout
+        for index, line in enumerate(lines):
+            if line.rstrip("\r\n").endswith("%%EOF"):
+                return "".join(lines[index + 1 :])
+
+        return ""
 
 
 
 __all__ = ["UnsafeBashBridgeAppendEOF"]
-
