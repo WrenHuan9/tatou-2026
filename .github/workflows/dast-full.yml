@@ -1,0 +1,67 @@
+name: DAST Full Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # 每周一凌晨 2 点
+  workflow_dispatch:        # 手动触发
+
+permissions:
+  contents: read
+
+jobs:
+  dast-full:
+    name: DAST Full Scan (ZAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: test_root_password
+          MARIADB_DATABASE: tatou_test
+          MARIADB_USER: tatou_test
+          MARIADB_PASSWORD: test_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -u root --password=test_root_password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+          --health-start-period=30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and start application
+        env:
+          SECRET_KEY: test_secret_key_for_ci
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: tatou_test
+          DB_USER: tatou_test
+          DB_PASSWORD: test_password
+          STORAGE_DIR: /tmp/tatou_storage
+        run: |
+          cd server && pip install -e .
+          pip install gunicorn
+          mysql -h 127.0.0.1 -u root -ptest_root_password tatou_test < ../db/tatou.sql
+          mkdir -p /tmp/tatou_storage
+          gunicorn -b 0.0.0.0:5000 src.server:app &
+          timeout 30 bash -c 'until curl -sf http://localhost:5000/healthz; do sleep 2; done'
+      - name: ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.12.0
+        with:
+          target: http://localhost:5000
+          allow_issue_writing: false
+      - name: Upload ZAP report
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+          category: zap-full

@@ -56,26 +56,65 @@ jobs:
           sarif_file: semgrep-results.sarif
           category: semgrep
 
-  dependency-check:
-    name: Dependency Vulnerabilities
+  sca:
+    name: Dependency Vulnerabilities (Trivy)
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Scan dependencies
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          python-version: "3.12"
+          scan-type: fs
+          scan-ref: server/
+          format: sarif
+          output: trivy-sca.sarif
+          severity: CRITICAL,HIGH
+      - name: Upload to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-sca.sarif
+          category: trivy-sca
 
-      - name: Install project dependencies
-        run: cd server && pip install -e .
+  container-scan:
+    name: Container Security (Trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
  
-      - name: Install pip-audit
-        run: pip install pip-audit
-
-      - name: Audit dependencies
-        run: pip-audit --desc --skip-editable
+      - name: Scan Dockerfile and docker-compose
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+ 
+      - name: Build image
+        run: docker build -t tatou:test server/
+ 
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: tatou:test
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+ 
+      - name: Upload to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
 
   tests:
     name: Test Suite
@@ -140,3 +179,60 @@ jobs:
         with:
           name: coverage-report
           path: server/coverage-report/
+
+  dast-baseline:
+    name: DAST Baseline (ZAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      security-events: write
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: test_root_password
+          MARIADB_DATABASE: tatou_test
+          MARIADB_USER: tatou_test
+          MARIADB_PASSWORD: test_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -u root --password=test_root_password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+          --health-start-period=30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and start application
+        env:
+          SECRET_KEY: test_secret_key_for_ci
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: tatou_test
+          DB_USER: tatou_test
+          DB_PASSWORD: test_password
+          STORAGE_DIR: /tmp/tatou_storage
+        run: |
+          cd server && pip install -e .
+          pip install gunicorn
+          mysql -h 127.0.0.1 -u root -ptest_root_password tatou_test < ../db/tatou.sql
+          mkdir -p /tmp/tatou_storage
+          gunicorn -b 0.0.0.0:5000 src.server:app &
+          timeout 30 bash -c 'until curl -sf http://localhost:5000/healthz; do sleep 2; done'
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: http://localhost:5000
+          allow_issue_writing: false
+      - name: Upload ZAP report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          path: zap_scan.zip
+          name: zap-baseline-report
