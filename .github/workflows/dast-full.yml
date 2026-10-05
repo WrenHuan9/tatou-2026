@@ -2,8 +2,8 @@ name: DAST Full Scan
 
 on:
   schedule:
-    - cron: '0 2 * * 1'  # 每周一凌晨 2 点
-  workflow_dispatch:        # 手动触发
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -60,8 +60,8 @@ jobs:
           target: http://localhost:5000
           allow_issue_writing: false
       - name: Upload ZAP report
-        uses: github/codeql-action/upload-sarif@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          sarif_file: results.sarif
-          category: zap-full
+          path: zap_scan.zip
+          name: zap-fullscan-report
