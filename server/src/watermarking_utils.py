@@ -127,7 +127,7 @@ _TYPE_RE: Final[re.Pattern[bytes]] = re.compile(rb"/Type\s*/([A-Za-z]+)")
 
 
 def _sha1(b: bytes) -> str:
-    return hashlib.sha1(b).hexdigest()
+    return hashlib.sha1(b, usedforsecurity=False).hexdigest()
 
 
 def explore_pdf(pdf: PdfSource) -> Dict[str, Any]:
@@ -249,4 +249,3 @@ __all__ = [
     "explore_pdf",
     "is_watermarking_applicable"
 ]
-
