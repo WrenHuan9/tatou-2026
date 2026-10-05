@@ -624,8 +624,8 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"failed to write watermarked file: {e}"}), 500
 
-        # link token = sha1(watermarked_file_name)
-        link_token = hashlib.sha1(candidate.encode("utf-8")).hexdigest()
+        # link token derived from watermarked file name
+        link_token = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
 
         try:
             with get_engine().begin() as conn:
